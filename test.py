@@ -8,6 +8,14 @@ FUNCTION_TYPE_PATTERN = r"([^\(\)\s]+)\s*\(([^\(\)]*)\).*"
 TYPE_CLASS = 'class'
 TYPE_METHOD = 'method'
 
+LIBRARIES = [
+    "use_module(library(clpfd))"
+]
+
+RULES = [
+    "all_diff(L) :- \+ (append(_,[X|R],L), memberchk(X,R))"
+]
+
 declared_methods = {}
 
 parser = argparse.ArgumentParser(description='Tests OOP program structure.')
@@ -23,6 +31,7 @@ def create_object(parent, obj_type, name):
         'type': obj_type,
         'name': name
     }
+
 
 def collect_facts(prolog, parent, ast):
     node_kind = ast['kind']
@@ -101,40 +110,43 @@ def collect_facts(prolog, parent, ast):
         for children in ast['inner']:
             collect_facts(prolog, parent, children)
 
-prolog = Prolog()
-with open(args.ast, 'r') as f:
-    try:
-        ast = json.loads(f.read())
-    except:
-        print("Can't read ast file!")
+
+def main():
+    prolog = Prolog()
+    with open(args.ast, 'r') as f:
+        try:
+            ast = json.loads(f.read())
+        except:
+            print("Can't read ast file!")
+            exit()
+
+    for library in LIBRARIES:
+        prolog.assertz(library)
+    for rule in RULES:
+        prolog.assertz(rule)
+
+    if ast['kind'] == 'TranslationUnitDecl':
+        items = ast['inner']
+        current_file = ''
+        for item in items:
+            if 'loc' in item and 'file' in item['loc'] and item['loc']['file'] != '':
+                current_file = item['loc']['file']
+                # print('Handling file: {}'.format(current_file))
+
+            if current_file == args.src_name:
+                collect_facts(prolog, None, item)
+    else:
+        print('Invalid root declaration')
         exit()
 
-prolog.assertz('use_module(library(clpfd))')
-prolog.assertz('all_diff(L) :- \+ (append(_,[X|R],L), memberchk(X,R))')
+    solutions = prolog.query(args.test)
+    try:
+        specific_solution = next(solutions)
+        print('PASSED')
+    except:
+        print('FAILED')
 
-if ast['kind'] == 'TranslationUnitDecl':
-    items = ast['inner']
-    current_file = ''
-    for item in items:
-        if 'loc' in item and 'file' in item['loc'] and item['loc']['file'] != '':
-            current_file = item['loc']['file']
-            # print('Handling file: {}'.format(current_file))
-
-        if current_file == args.src_name:
-            collect_facts(prolog, None, item)
-else:
-    print('Invalid root declaration')
-    exit()
-
-# collect_facts(prolog, None, ast)
-
-solutions = prolog.query(args.test)
-try:
-    specific_solution = next(solutions)
-    print('PASSED')
-except:
-    print('FAILED')
-
-solutions.close()
+    solutions.close()
 
 
+main()
